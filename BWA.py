@@ -31,18 +31,18 @@ class BWA:
 		C, Occ, Occ_reverse = [dict() for i in range(3)]
 		alphabet = set()
 		reverse_reference = reference[::-1]#reverse reference
-		
+
 		#Construct the alphabet. (This would be hard coded for DNA examples)
 		reference = reference.lower()
 		for char in reference:
 			alphabet.add(char)
-		
+
 		#initialize 2 auxillary datastructures
 		for char in alphabet:
 			C[char] = 0
 			Occ[char] = list()# in Occ, each character has an associated list of integer values (for each index along the reference)
 			Occ_reverse[char] = list()
-	
+
 		#append the ending character to the reference string
 		reference = "%s$" % reference
 		reverse_reference = "%s$" % reverse_reference
@@ -52,28 +52,28 @@ class BWA:
 			new_rotation = "%s%s" % (reference[i:],reference[0:i])
 			struct = Suffix(new_rotation,i)
 			rotation_list.append(struct)
-			
+
 			new_rotation_reverse = "%s%s" % (reverse_reference[i:],reverse_reference[0:i])
 			struct_rev = Suffix(new_rotation_reverse,i)
 			rotation_list_reverse.append(struct_rev)
-		
+
 			#create the C datastructure. C(a) = the number of characters 'a' in the Reference that are lexographically smaller than 'a'
 			#NOTE, the C datastructure is not required for the reverse reference
 			if reference[i]!='$':
 				for char in alphabet:
 					if reference[i] < char:
-						C[char] = C[char] + 1	
-		
+						C[char] = C[char] + 1
+
 		#sort the rotations/suffixes using the suffix/rotation text as the key
 		rotation_list.sort(key=textKey)
 		rotation_list_reverse.sort(key=textKey)
-	
+
 		#now record the results into 2 seperate lists, the suffix (or S) array and the BWT (or B) array
 		#also calculate the auxilliary datastructure Occ (or O)
 		for i in rotation_list:
 			suffix_array.append(i.pos)#the position of the reordered suffixes forms the Suffix Array elements
 			bwt.append(i.text[-1:])#the last character in each rotation (in the new order) forms the BWT string elements
-		
+
 			#now construct the Occ (or C) datastructure
 			for char in alphabet:
 				if len(Occ[char]) == 0:
@@ -84,7 +84,7 @@ class BWA:
 					Occ[char].append(prev+1)
 				else:
 					Occ[char].append(prev)
-					
+
 		#now record the results into 2 seperate lists, the suffix (or S) array and the BWT (or B) array
 		#also calculate the auxilliary datastructures, C and Occ (or O)
 		for i in rotation_list_reverse:
@@ -97,14 +97,14 @@ class BWA:
 				if i.text[-1:] == char:
 					Occ_reverse[char].append(prev+1)
 				else:
-					Occ_reverse[char].append(prev)					
-					
+					Occ_reverse[char].append(prev)
+
 		#save all the useful datastructures as class variables for easy future access
 		self.SA = suffix_array
 		self.BWT = bwt
 		self.C = C
 		self.Occ = Occ
-		self.Occ_reverse = Occ_reverse #the Occ datastructure for the reverse reference, using to construct the D array (the lower bound on the number of differences allowed), to speed up alignments 
+		self.Occ_reverse = Occ_reverse #the Occ datastructure for the reverse reference, using to construct the D array (the lower bound on the number of differences allowed), to speed up alignments
 		self.n = len(reference)
 		self.D = list()#empty list for later use
 		self.alphabet = alphabet
@@ -121,9 +121,12 @@ class BWA:
 		query = query.lower()
 		i = 0
 		j = self.n - 1
-		
+
 		for x in range(len(query)):
 			newChar = query[-x-1]
+			# query is not exact_match
+			if self.C.get(newChar) == None:
+				return []
 			newI = self.C[newChar] + self.OCC(newChar,i-1) + 1
 			newJ = self.C[newChar] + self.OCC(newChar,j)
 			i = newI
@@ -140,22 +143,22 @@ class BWA:
 	#recursion function that effectively "walks" through the suffix tree using the SA, BWT, Occ and C datastructures
 	def inexact_recursion(self,query,i,z,k,l):
 		tempset = set()
-			
+
 		#2 stop conditions, one when too many differences have been encountered, another when the entire query has been matched, terminating in success
 		if (z < self.get_D(i) and use_lower_bound_tree_pruning) or (z < 0 and not use_lower_bound_tree_pruning):#reached the limit of differences at this stage, terminate this path traversal
-			if debug:print "too many differences, terminating path\n" 
-			return set()#return empty set	
+			if debug:print "too many differences, terminating path\n"
+			return set()#return empty set
 		if i < 0:#empty query string, entire query has been matched, return SA indexes k:l
 			if debug:print "query string finished, terminating path, success! k=%d, l=%d\n" % (k,l)
 			for m in range(k,l+1):
 				tempset.add(m)
 			return tempset
-			
+
 		result = set()
 		if indels_allowed: result = result.union(self.inexact_recursion(query,i-1,z-insertion_penalty,k,l))#without finding a match or altering k or l, move on down the query string. Insertion
 		for char in self.alphabet:#for each character in the alphabet
 			#find the SA interval for the char
-			newK = self.C[char] + self.OCC(char,k-1) + 1 
+			newK = self.C[char] + self.OCC(char,k-1) + 1
 			newL = self.C[char] + self.OCC(char,l)
 			if newK <= newL:#if the substring was found
 				if indels_allowed: result = result.union(self.inexact_recursion(query,i,z-deletion_penalty,newK,newL))# Deletion
@@ -191,7 +194,7 @@ class BWA:
 				return self.Occ_reverse[char][index]
 			else:
 				return self.Occ[char][index]
-	
+
 	#gets values from the D array
 	#NOTE D(-1) = 0
 	def get_D(self,index):
@@ -232,7 +235,7 @@ if __name__ == "__main__":
 	data = BWA(reference)
 	print "\n\nReference: \"%s\"" % reference
 	if show_data_structures:
-		#printing out the datastructues for manual inspection	
+		#printing out the datastructues for manual inspection
 		print "\nSA		BWT"
 		print "--		---"
 		for i in range(len(data.SA)):
